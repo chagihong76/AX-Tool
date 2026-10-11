@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>야근/휴일 근무 시간 및 대체휴가 계산</title>
+    <!-- 서식(색상, 테두리 등)을 지원하는 엑셀 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; background-color: #f8f9fa; }
+        h2, h3 { text-align: center; color: #000; font-weight: bold; }
+        
+        /* 상단 팀 배너 (네트워크/AI 테마 이미지 배경 + 다크 오버레이) */
+        .team-banner {
+            background: linear-gradient(135deg, rgba(15, 32, 39, 0.85), rgba(44, 83, 100, 0.8)), 
+                        url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80') center/cover no-repeat;
+            color: white;
+            padding: 35px 30px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .team-banner .banner-title {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+        }
+        .team-banner .banner-subtitle {
+            font-size: 16px;
+            font-weight: 400;
+            color: #81ecec;
+            margin-left: 20px;
+            border-left: 2px solid #556b78;
+            padding-left: 20px;
+            letter-spacing: 0.5px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* 상단 타이틀 영역 */
+        .header-area { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header-area h2 { margin: 0; flex-grow: 1; text-align: center; padding-left: 120px; }
+        
+        /* 입력 폼 컨테이너 */
+        .input-card { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 5px rgba(0,0,0,0.1); margin-bottom: 30px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; border: 1px solid #eaeaea; }
+        .input-item { display: flex; flex-direction: column; }
+        .input-item label { font-size: 13px; color: #333; margin-bottom: 8px; font-weight: bold; }
+        .input-item input, .input-item select { padding: 9px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; outline: none; }
+        .input-item input:focus, .input-item select:focus { border-color: #aaa; }
+        
+        .input-item select { width: 90px; }
+        .input-item input[type="date"] { width: 130px; }
+        .input-item input[type="time"] { width: 110px; }
+        .input-item input[type="number"] { width: 80px; }
+        .input-item input[type="text"] { width: 140px; }
+        
+        /* 메인 액션 버튼 */
+        button.add-btn { background-color: #21598f; color: white; border: none; padding: 10px 25px; border-radius: 4px; font-weight: bold; cursor: pointer; height: 40px; margin-left: auto; transition: 0.2s; }
+        button.add-btn:hover { background-color: #1a4673; }
+        button.export-btn { background-color: #217346; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+        button.export-btn:hover { background-color: #1a5c38; }
+
+        /* 테이블 공통 스타일 */
+        table { width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 1px 5px rgba(0,0,0,0.1); text-align: center; font-size: 14px; margin-bottom: 30px; }
+        th, td { border: 1px solid #ddd; padding: 10px; }
+        th { background-color: #21598f; color: white; font-weight: normal; }
+        .row-weekend { background-color: #fff9c4; }
+
+        /* 테이블 내 관리 버튼 */
+        .action-btns { display: flex; gap: 5px; justify-content: center; }
+        button.edit-btn { background-color: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+        button.edit-btn:hover { background-color: #2980b9; }
+        button.del-btn { background-color: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+        button.del-btn:hover { background-color: #c0392b; }
+
+        /* 요약 테이블 스타일 */
+        .summary-table th.header-col { background-color: #21598f; width: 25%; font-weight: bold; color: white; }
+        .summary-table th.sub-col { background-color: #4a75be; width: 25%; color: white; }
+        .summary-table td.total-row { background-color: #333; color: #ffeb3b; font-weight: bold; }
+        
+        /* 최종 결과창 */
+        .result-box { background-color: #e7f3fe; border-left: 6px solid #21598f; padding: 20px; font-size: 16px; margin-bottom: 50px; }
+        .highlight { font-weight: bold; color: #d32f2f; font-size: 22px; margin-top: 10px; display: block; }
+    </style>
+</head>
+<body>
+
+    <!-- 상단 팀 배너 (이미지 + 변경된 문구) -->
+    <div class="team-banner">
+        <h1 class="banner-title">AX 아키텍처팀</h1>
+        <span class="banner-subtitle">아무것도 하지 않으면 아무 일도 일어나지 않는다</span>
+    </div>
+
+    <div class="header-area">
+        <h2>야근/휴일 근무 시간</h2>
+        <button class="export-btn" onclick="exportToExcel()">📥 엑셀로 다운로드</button>
+    </div>
+
+    <!-- 데이터 입력 및 수정 폼 -->
+    <div class="input-card">
+        <div class="input-item">
+            <label>구분</label>
+            <select id="workType">
+                <option value="평일">평일</option>
+                <option value="주말">주말</option>
+                <option value="공휴일">공휴일</option>
+            </select>
+        </div>
+        <div class="input-item">
+            <label>일자</label>
+            <input type="date" id="workDate">
+        </div>
+        <div class="input-item">
+            <label>출근시간</label>
+            <input type="time" id="startTime" value="09:00">
+        </div>
+        <div class="input-item">
+            <label>퇴근시간</label>
+            <input type="time" id="endTime" value="18:00">
+        </div>
+        <div class="input-item">
+            <label>차감시간(시간)</label>
+            <input type="number" id="deductionHours" value="10" min="0" step="0.5">
+        </div>
+        <div class="input-item">
+            <label>비고</label>
+            <input type="text" id="note" placeholder="내용 입력 (선택)">
+        </div>
+        <button class="add-btn" id="submitBtn" onclick="addRecord()">추가</button>
+    </div>
+
+    <!-- 근무 시간 상세 내역 테이블 -->
+    <table id="recordTable">
+        <thead>
+            <tr>
+                <th width="5%">No</th>
+                <th width="8%">구분</th>
+                <th width="15%">일자</th>
+                <th width="10%">출근시간</th>
+                <th width="10%">퇴근시간</th>
+                <th width="10%">차감시간</th>
+                <th width="15%">초과 근무시간</th>
+                <th width="15%">비고</th>
+                <th width="12%">관리</th>
+            </tr>
+        </thead>
+        <tbody id="recordBody">
+            <!-- 데이터가 여기에 추가됩니다 -->
+        </tbody>
+    </table>
+
+    <!-- 초과근무 요약 테이블 -->
+    <h3>1) 초과근무 내역 수치 요약</h3>
+    <table class="summary-table">
+        <tbody>
+            <tr>
+                <th rowspan="3" class="header-col">초과근무 요약</th>
+                <th class="sub-col">평일</th>
+                <td id="sumWeekdayDays">0 일</td>
+                <td id="sumWeekdayTime">0 시간 00분</td>
+            </tr>
+            <tr>
+                <th class="sub-col">주말/공휴일</th>
+                <td id="sumWeekendDays">0 일</td>
+                <td id="sumWeekendTime">0 시간 00분</td>
+            </tr>
+            <tr>
+                <td class="total-row">총 계</td>
+                <td class="total-row" id="sumTotalDays">0 일</td>
+                <td class="total-row" id="sumTotalTime">0 시간 00분</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- 최종 대체휴가 결과 -->
+    <div class="result-box">
+        <p><strong>적용 기준:</strong> 평일 초과근무는 누적 합산하여 8시간당 1일로 환산하며, 주말/공휴일 근무는 발생 1건당 무조건 1일의 대체휴가를 부여합니다.</p>
+        <span class="highlight" id="finalResult">★ 최종 발생 대체휴가: 0일 + 0시간 00분 ★</span>
+    </div>
+
+<script>
+    let records = [];
+    let recordIdCounter = 1;
+    let editingId = null;
+
+    function formatDate(dateString) {
+        const d = new Date(dateString);
+        return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function calculateOvertimeMins(start, end, deduction) {
+        if (!start || !end) return 0;
+        const startDate = new Date(`2000-01-01T${start}:00`);
+        let endDate = new Date(`2000-01-01T${end}:00`);
+        if (endDate < startDate) endDate.setDate(endDate.getDate() + 1);
+
+        const diffMins = (endDate - startDate) / 60000;
+        const dedMins = (parseFloat(deduction) || 0) * 60;
+        return Math.max(0, diffMins - dedMins);
+    }
+
+    function isAfter1800(start, end) {
+        if (!start || !end || start === "-" || end === "-") return false;
+        const startDate = new Date(`2000-01-01T${start}:00`);
+        let endDate = new Date(`2000-01-01T${end}:00`);
+        if (endDate < startDate) endDate.setDate(endDate.getDate() + 1); 
+        
+        const refDate = new Date(`2000-01-01T18:00:00`); 
+        return endDate > refDate;
+    }
+
+    function minsToStr(mins) {
+        if (mins <= 0) return "0시간 00분";
+        const h = Math.floor(mins / 60);
+        const m = Math.floor(mins % 60);
+        return `${h}시간 ${String(m).padStart(2, '0')}분`;
+    }
+
+    function addRecord() {
+        const type = document.getElementById('workType').value;
+        const dateRaw = document.getElementById('workDate').value;
+        const start = document.getElementById('startTime').value;
+        const end = document.getElementById('endTime').value;
+        const deduction = document.getElementById('deductionHours').value;
+        const note = document.getElementById('note').value;
+
+        if (!dateRaw) { alert("일자를 선택해주세요."); return; }
+
+        const overtimeMins = calculateOvertimeMins(start, end, deduction);
+        const recordData = {
+            id: editingId !== null ? editingId : recordIdCounter++,
+            type: type,
+            dateRaw: dateRaw,
+            formattedDate: formatDate(dateRaw),
+            start: start || "-",
+            end: end || "-",
+            deductionRaw: deduction,
+            deductionStr: deduction ? `${deduction}시간` : "-",
+            overtimeStr: !start || !end ? "휴식" : minsToStr(overtimeMins),
+            overtimeMins: overtimeMins,
+            note: note
+        };
+
+        if (editingId !== null) {
+            const index = records.findIndex(r => r.id === editingId);
+            if (index > -1) records[index] = recordData;
+            editingId = null;
+            const btn = document.getElementById('submitBtn');
+            btn.innerText = "추가";
+            btn.style.backgroundColor = "#21598f";
+        } else {
+            records.push(recordData);
+        }
+
+        document.getElementById('note').value = ''; 
+        renderUI();
+    }
+
+    function editRecord(id) {
+        const rec = records.find(r => r.id === id);
+        if (!rec) return;
+
+        document.getElementById('workType').value = rec.type;
+        document.getElementById('workDate').value = rec.dateRaw;
+        document.getElementById('startTime').value = rec.start !== "-" ? rec.start : "";
+        document.getElementById('endTime').value = rec.end !== "-" ? rec.end : "";
+        document.getElementById('deductionHours').value = rec.deductionRaw || "";
+        document.getElementById('note').value = rec.note || "";
+
+        editingId = id; 
+        const btn = document.getElementById('submitBtn');
+        btn.innerText = "수정완료";
+        btn.style.backgroundColor = "#3498db";
+    }
+
+    function deleteRecord(id) {
+        if(editingId === id) {
+            alert("수정 중인 내역은 삭제할 수 없습니다."); return;
+        }
+        records = records.filter(r => r.id !== id);
+        renderUI();
+    }
+
+    function renderUI() {
+        const tbody = document.getElementById('recordBody');
+        tbody.innerHTML = '';
+
+        let weekdayCount = 0, weekdayMins = 0;
+        let weekendCount = 0, weekendMins = 0;
+
+        records.forEach((rec, index) => {
+            const tr = document.createElement('tr');
+            if (rec.id === editingId) {
+                tr.style.border = "2px solid #3498db";
+                tr.style.backgroundColor = "#f0f8ff";
+            } else if (rec.type === '주말' || rec.type === '공휴일') {
+                tr.className = 'row-weekend';
+            }
+
+            if (rec.type === '주말' || rec.type === '공휴일') {
+                weekendCount++; 
+                weekendMins += rec.overtimeMins;
+            } else {
+                if (isAfter1800(rec.start, rec.end)) {
+                    weekdayCount++;
+                }
+                weekdayMins += rec.overtimeMins; 
+            }
+
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td style="font-weight:bold; color:${rec.type === '평일' ? '#333' : '#d32f2f'};">${rec.type}</td>
+                <td>${rec.formattedDate}</td>
+                <td>${rec.start}</td>
+                <td>${rec.end}</td>
+                <td>${rec.deductionStr}</td>
+                <td>${rec.overtimeStr}</td>
+                <td>${rec.note}</td>
+                <td>
+                    <div class="action-btns">
+                        <button class="edit-btn" onclick="editRecord(${rec.id})">수정</button>
+                        <button class="del-btn" onclick="deleteRecord(${rec.id})">삭제</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('sumWeekdayDays').innerText = `${weekdayCount} 일`;
+        document.getElementById('sumWeekdayTime').innerText = minsToStr(weekdayMins);
+        document.getElementById('sumWeekendDays').innerText = `${weekendCount} 일`;
+        document.getElementById('sumWeekendTime').innerText = minsToStr(weekendMins);
+
+        const totalMins = weekdayMins + weekendMins;
+        document.getElementById('sumTotalDays').innerText = `${weekdayCount + weekendCount} 일`;
+        document.getElementById('sumTotalTime').innerText = minsToStr(totalMins);
+
+        const weekdayVacationDays = Math.floor(weekdayMins / 480); 
+        const weekdayRemainMins = weekdayMins % 480;
+        const finalVacationDays = weekendCount + weekdayVacationDays;
+        const finalRemainHours = Math.floor(weekdayRemainMins / 60);
+        const finalRemainMinsStr = String(weekdayRemainMins % 60).padStart(2, '0');
+
+        document.getElementById('finalResult').innerText = 
+            `★ 최종 발생 대체휴가: ${finalVacationDays}일 + ${finalRemainHours}시간 ${finalRemainMinsStr}분 ★`;
+    }
+
+    function exportToExcel() {
+        if (records.length === 0) { alert("다운로드할 근무 기록이 없습니다."); return; }
+
+        const borderThin = {
+            top: {style: 'thin', color: {rgb: "000000"}},
+            bottom: {style: 'thin', color: {rgb: "000000"}},
+            left: {style: 'thin', color: {rgb: "000000"}},
+            right: {style: 'thin', color: {rgb: "000000"}}
+        };
+
+        const alignCenter = { horizontal: "center", vertical: "center" };
+        const alignRight = { horizontal: "right", vertical: "center" };
+        const alignLeft = { horizontal: "left", vertical: "center" };
+
+        const maxRows = Math.max(records.length + 5, 20);
+        const ws_data = Array.from({length: maxRows}, () => Array(16).fill({ v: "", s: {} }));
+
+        ws_data[0][0] = { v: "야근/휴일 근무 시간", s: { font: { bold: true, sz: 16 }, alignment: alignCenter } };
+        ws_data[1][6] = { v: "대상자 : AX 아키텍처팀 차기홍", s: { font: { bold: true }, alignment: alignRight } };
+
+        const headers = ["No", "구분", "일자", "출근시간", "퇴근시간", "차감시간", "초과 근무시간", "비고"];
+        headers.forEach((h, i) => {
+            ws_data[2][i] = { 
+                v: h, 
+                s: { fill: { fgColor: { rgb: "21598f" } }, font: { color: { rgb: "ffffff" }, bold: true }, border: borderThin, alignment: alignCenter } 
+            };
+        });
+
+        const displayRowCount = Math.max(records.length, 10);
+        for (let i = 0; i < displayRowCount; i++) {
+            const rowIndex = 3 + i;
+            if (i < records.length) {
+                const rec = records[i];
+                const excelDate = rec.formattedDate.replace(/\(.\)/g, '');
+
+                ws_data[rowIndex][0] = { v: i + 1, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][1] = { v: rec.type, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][2] = { v: excelDate, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][3] = { v: rec.start, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][4] = { v: rec.end, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][5] = { v: rec.deductionStr, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][6] = { v: rec.overtimeStr, s: { border: borderThin, alignment: alignCenter } };
+                ws_data[rowIndex][7] = { v: rec.note, s: { border: borderThin, alignment: alignCenter } };
+            } else {
+                for (let c = 0; c < 8; c++) {
+                    ws_data[rowIndex][c] = { v: "", s: { border: borderThin } };
+                }
+            }
+        }
+
+        ws_data[1][9] = { v: "1) 초과근무 내역 수치", s: { font: { bold: true }, alignment: alignLeft } };
+
+        ws_data[2][9] = { v: "초과근무 요약", s: { fill: { fgColor: { rgb: "21598f" } }, font: { color: { rgb: "ffffff" }, bold: true }, border: borderThin, alignment: alignCenter } };
+        ws_data[2][10] = { v: "평일", s: { fill: { fgColor: { rgb: "4a75be" } }, font: { color: { rgb: "ffffff" }, bold: true }, border: borderThin, alignment: alignCenter } };
+        ws_data[2][11] = { v: document.getElementById('sumWeekdayDays').innerText, s: { border: borderThin, alignment: alignRight } };
+        ws_data[2][12] = { v: document.getElementById('sumWeekdayTime').innerText, s: { border: borderThin, alignment: alignRight } };
+
+        ws_data[3][9] = { v: "", s: { border: borderThin } }; 
+        ws_data[3][10] = { v: "주말/공휴일", s: { fill: { fgColor: { rgb: "4a75be" } }, font: { color: { rgb: "ffffff" }, bold: true }, border: borderThin, alignment: alignCenter } };
+        ws_data[3][11] = { v: document.getElementById('sumWeekendDays').innerText, s: { border: borderThin, alignment: alignRight } };
+        ws_data[3][12] = { v: document.getElementById('sumWeekendTime').innerText, s: { border: borderThin, alignment: alignRight } };
+
+        ws_data[4][9] = { v: "총 계", s: { fill: { fgColor: { rgb: "333333" } }, font: { color: { rgb: "ffeb3b" }, bold: true }, border: borderThin, alignment: alignCenter } };
+        ws_data[4][10] = { v: "", s: { border: borderThin } }; 
+        ws_data[4][11] = { v: document.getElementById('sumTotalDays').innerText, s: { fill: { fgColor: { rgb: "333333" } }, font: { color: { rgb: "ffeb3b" }, bold: true }, border: borderThin, alignment: alignRight } };
+        ws_data[4][12] = { v: document.getElementById('sumTotalTime').innerText, s: { fill: { fgColor: { rgb: "333333" } }, font: { color: { rgb: "ffeb3b" }, bold: true }, border: borderThin, alignment: alignRight } };
+
+        ws_data[6][9] = { v: "** 근거 자료는 작성만 해놓고 해당 수치만 연차신청서에 표기하고 세부 근거 달라고하면 넣는게 어떨지 싶습니다...", s: { font: { color: { rgb: "555555" } } } };
+        ws_data[7][9] = { v: "만약이렇게했는데 많다고 줄이라고할꺼면 작성하는 사람들은 불필요한 시간낭비라서 아예 안하는게 맞을것같습니다....", s: { font: { color: { rgb: "555555" } } } };
+        ws_data[8][9] = { v: "*** 결재시 통파일 첨부금지.!!", s: { font: { color: { rgb: "ff0000" }, bold: true } } };
+
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        
+        ws['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },  
+            { s: { r: 1, c: 6 }, e: { r: 1, c: 7 } },  
+            { s: { r: 1, c: 9 }, e: { r: 1, c: 12 } }, 
+            { s: { r: 2, c: 9 }, e: { r: 3, c: 9 } },  
+            { s: { r: 4, c: 9 }, e: { r: 4, c: 10 } }, 
+        ];
+
+        ws['!cols'] = [
+            {wch: 5}, {wch: 10}, {wch: 16}, {wch: 11}, {wch: 11}, 
+            {wch: 11}, {wch: 15}, {wch: 20}, {wch: 5}, {wch: 16}, 
+            {wch: 14}, {wch: 8}, {wch: 14}
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "야근_휴일근무");
+        XLSX.writeFile(wb, "초과근무_대체휴가_결과.xlsx");
+    }
+
+    document.getElementById('workDate').valueAsDate = new Date();
+</script>
+
+</body>
+</html>
